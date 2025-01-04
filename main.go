@@ -22,9 +22,27 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func main() {
+	title := "Hello, World!"
+
 	ebiten.SetWindowSize(640, 480)
-	ebiten.SetWindowTitle("Hello, World!")
-	if err := ebiten.RunGame(&Game{}); err != nil {
+	ebiten.SetRunnableOnUnfocused(true)
+	ebiten.SetScreenClearedEveryFrame(false)
+	ebiten.SetTPS(60)
+	ebiten.SetVsyncEnabled(true)
+	ebiten.SetWindowDecorated(false)
+	ebiten.SetWindowFloating(true)
+	ebiten.SetWindowMousePassthrough(true)
+	ebiten.SetWindowTitle(title)
+
+	game := &Game{}
+	options := &ebiten.RunGameOptions{
+		InitUnfocused:     true,
+		ScreenTransparent: true,
+		SkipTaskbar:       true,
+		X11ClassName:      title,
+		X11InstanceName:   title,
+	}
+	if err := ebiten.RunGameWithOptions(game, options); err != nil {
 		log.Fatal(err)
 	}
 }
