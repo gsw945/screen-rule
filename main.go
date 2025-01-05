@@ -6,13 +6,13 @@ import (
 	"image"
 	"image/color"
 	"log"
-	"math"
 
 	"screen-rule/assets/fonts"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/colorm"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 )
 
@@ -27,20 +27,13 @@ var (
 	shsFaceSource               *text.GoTextFaceSource
 )
 
-type touch struct {
-	id  ebiten.TouchID
-	pos pos
-}
-
 type pos struct {
 	x int
 	y int
 }
 
 type Game struct {
-	cursor  pos
-	touches []touch
-	count   int
+	cursor pos
 
 	canvasImage *ebiten.Image
 }
@@ -50,79 +43,102 @@ func NewGame() *Game {
 		canvasImage: ebiten.NewImage(screenWidth, screenHeight),
 	}
 	g.canvasImage.Fill(color.Transparent)
+	g.cursor = pos{
+		x: -1,
+		y: -1,
+	}
 	return g
 }
 
 func (g *Game) Update() error {
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
-	}
+	} else {
+		mx, my := ebiten.CursorPosition()
+		isMouseMoved := g.cursor.x != mx || g.cursor.y != my
+		g.cursor = pos{
+			x: mx,
+			y: my,
+		}
+		isMouseChanged := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
+			inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) ||
+			inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) ||
+			inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonRight) ||
+			inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) ||
+			inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonMiddle) ||
+			inpututil.IsMouseButtonJustPressed(ebiten.MouseButton0) ||
+			inpututil.IsMouseButtonJustReleased(ebiten.MouseButton1) ||
+			inpututil.IsMouseButtonJustPressed(ebiten.MouseButton2) ||
+			inpututil.IsMouseButtonJustReleased(ebiten.MouseButton3) ||
+			inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4)
+		if isMouseChanged || isMouseMoved {
+			g.canvasImage.Fill(color.Transparent)
+			g.drawText(g.canvasImage, "你好世界！", 32, 220, 220)
+			g.drawText(g.canvasImage, "测试", 36, 120, 320)
 
-	drawn := false
-
-	// Paint the brush by mouse dragging
-	mx, my := ebiten.CursorPosition()
-	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-		g.paint(g.canvasImage, mx, my)
-		drawn = true
+			b := g.canvasImage.Bounds()
+			var ebitenAlphaImage *image.Alpha = image.NewAlpha(b)
+			for j := b.Min.Y; j < b.Max.Y; j++ {
+				for i := b.Min.X; i < b.Max.X; i++ {
+					ebitenAlphaImage.Set(i, j, g.canvasImage.At(i, j))
+				}
+			}
+			isIn := ebitenAlphaImage.At(mx-b.Min.X, my-b.Min.Y).(color.Alpha).A > 0
+			ebiten.SetWindowMousePassthrough(!isIn)
+		}
+		return nil
 	}
-	g.cursor = pos{
-		x: mx,
-		y: my,
-	}
-
-	// Paint the brush by touches
-	g.touches = g.touches[:0]
-	for _, id := range ebiten.AppendTouchIDs(nil) {
-		x, y := ebiten.TouchPosition(id)
-		g.paint(g.canvasImage, x, y)
-		g.touches = append(g.touches, touch{
-			id: id,
-			pos: pos{
-				x: x,
-				y: y,
-			},
-		})
-		drawn = true
-	}
-	if drawn {
-		g.count++
-	}
-	return nil
-}
-
-// paint draws the brush on the given canvas image at the position (x, y).
-func (g *Game) paint(canvas *ebiten.Image, x, y int) {
-	op := &colorm.DrawImageOptions{}
-	op.GeoM.Translate(float64(x), float64(y))
-	var cm colorm.ColorM
-	// Scale the color and rotate the hue so that colors vary on each frame.
-	cm.Scale(1.0, 0.50, 0.125, 1.0)
-	tps := ebiten.TPS()
-	theta := 2.0 * math.Pi * float64(g.count%tps) / float64(tps)
-	cm.RotateHue(theta)
-	colorm.DrawImage(canvas, brushImage, cm, op)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.DrawImage(g.canvasImage, nil)
 
-	msg := fmt.Sprintf("(%d, %d)\n(%d, %d)\nTPS: %0.2f\nHello, World!", monitorWidth, monitorHeight, g.cursor.x, g.cursor.y, ebiten.ActualTPS())
-	ebitenutil.DebugPrint(screen, msg)
+	op := &colorm.DrawImageOptions{}
+	op.GeoM.Translate(float64(g.cursor.x-2), float64(g.cursor.y-4))
+	var cm colorm.ColorM
+	cm.Scale(1.0, 0.50, 0.125, 1.0)
+	colorm.DrawImage(screen, brushImage, cm, op)
 
-	op := &text.DrawOptions{}
-	op.GeoM.Translate(220, 220)
-	op.ColorScale.ScaleWithColor(color.RGBA{R: 0xff, G: 0xaa, B: 0x11, A: 0xff})
+	isMP := ebiten.IsWindowMousePassthrough()
+	msg := fmt.Sprintf("(%d, %d)\n(%d, %d)\nTPS: %0.2f\nMousePassthrough: %v\nHello, World!", monitorWidth, monitorHeight, g.cursor.x, g.cursor.y, ebiten.ActualTPS(), isMP)
+	ebitenutil.DebugPrint(screen, msg)
+}
+
+func (g *Game) drawText(parent *ebiten.Image, content string, fontsize float64, posX, posY float64) {
 	tf := &text.GoTextFace{
 		Source: shsFaceSource,
-		Size:   32,
+		Size:   fontsize,
 	}
 	tf.SetVariation(text.MustParseTag("wght"), float32(text.WeightExtraBold)) // 字重
 	tf.SetVariation(text.MustParseTag("wdth"), 100)                           // 字宽
 	// tf.SetVariation(text.MustParseTag("ital"), 1)                        // 斜体
 	// tf.SetVariation(text.MustParseTag("slnt"), 1)                        // 倾斜
 	// tf.SetVariation(text.MustParseTag("opsz"), 24)                       // 字体大小
-	text.Draw(screen, "你好世界！", tf, op)
+
+	mw, mh := text.Measure(content, tf, 0)
+	tima := image.NewAlpha(image.Rectangle{
+		Min: image.Point{
+			X: int(0),
+			Y: int(0),
+		},
+		Max: image.Point{
+			X: int(mw + 10),
+			Y: int(mh + 10),
+		},
+	})
+	timg := ebiten.NewImageFromImage(tima)
+	// timg.Fill(color.Transparent)
+	timg.Fill(color.White)
+
+	opt := &text.DrawOptions{}
+	opt.GeoM.Translate(5, 5)
+	opt.ColorScale.ScaleWithColor(color.RGBA{R: 0xff, G: 0xaa, B: 0x11, A: 0xff})
+	text.Draw(timg, content, tf, opt)
+
+	opi := &ebiten.DrawImageOptions{}
+	opi.GeoM.Translate(posX, posY)
+	parent.DrawImage(timg, opi)
+	timg.Deallocate()
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -165,7 +181,7 @@ func main() {
 	ebiten.SetVsyncEnabled(true)
 	ebiten.SetWindowDecorated(false)
 	ebiten.SetWindowFloating(true)
-	ebiten.SetWindowMousePassthrough(false)
+	ebiten.SetWindowMousePassthrough(true)
 	ebiten.SetWindowTitle(title)
 
 	game := NewGame()
