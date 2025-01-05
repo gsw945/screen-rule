@@ -14,11 +14,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 const (
-	screenWidth  = 640
-	screenHeight = 480
+	screenWidth  = 400
+	screenHeight = 180
 )
 
 var (
@@ -81,8 +82,9 @@ func (g *Game) Update() error {
 			inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4)
 		if isMouseChanged || isMouseMoved {
 			g.canvasImage.Fill(color.Transparent)
-			g.drawText(g.canvasImage, "你好世界！", 52, 220, 220)
-			g.drawText(g.canvasImage, "测试", 56, 120, 320)
+			// g.canvasImage.Fill(color.White) // for debug
+			g.drawText(g.canvasImage, "你好世界！", 50, 146, 5)
+			g.drawText(g.canvasImage, "测试", 56, 90, 80)
 
 			b := g.canvasImage.Bounds()
 			var ebitenAlphaImage *image.Alpha = image.NewAlpha(b)
@@ -127,7 +129,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	isMP := ebiten.IsWindowMousePassthrough()
 	msg := fmt.Sprintf("(%d, %d)\n(%d, %d)\nTPS: %0.2f\nMousePassthrough: %v\nHello, World!", monitorWidth, monitorHeight, g.cursor.x, g.cursor.y, ebiten.ActualTPS(), isMP)
-	ebitenutil.DebugPrint(screen, msg)
+	ebitenutil.DebugPrintAt(screen, msg, 10, 10)
+
+	vector.StrokeRect(g.canvasImage, 2, 2, screenWidth-4, screenHeight-4, 2, color.RGBA{R: 0xff, G: 0xaa, B: 0x11, A: 0xff}, true)
 }
 
 func (g *Game) drawText(parent *ebiten.Image, content string, fontsize float64, posX, posY float64) {
