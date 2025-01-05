@@ -33,7 +33,15 @@ type pos struct {
 }
 
 type Game struct {
-	cursor pos
+	cursor           pos
+	dragging         bool
+	dragStartWindowX int
+	dragStartWindowY int
+	dragStartCursorX int
+	dragStartCursorY int
+
+	cursorToWindowX float64
+	cursorToWindowY float64
 
 	canvasImage *ebiten.Image
 }
@@ -73,8 +81,8 @@ func (g *Game) Update() error {
 			inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4)
 		if isMouseChanged || isMouseMoved {
 			g.canvasImage.Fill(color.Transparent)
-			g.drawText(g.canvasImage, "你好世界！", 32, 220, 220)
-			g.drawText(g.canvasImage, "测试", 36, 120, 320)
+			g.drawText(g.canvasImage, "你好世界！", 52, 220, 220)
+			g.drawText(g.canvasImage, "测试", 56, 120, 320)
 
 			b := g.canvasImage.Bounds()
 			var ebitenAlphaImage *image.Alpha = image.NewAlpha(b)
@@ -86,6 +94,24 @@ func (g *Game) Update() error {
 			isIn := ebitenAlphaImage.At(mx-b.Min.X, my-b.Min.Y).(color.Alpha).A > 0
 			ebiten.SetWindowMousePassthrough(!isIn)
 		}
+
+		if !ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+			g.dragging = false
+		}
+		if !g.dragging && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+			g.dragging = true
+			g.dragStartWindowX, g.dragStartWindowY = ebiten.WindowPosition()
+			g.dragStartCursorX, g.dragStartCursorY = ebiten.CursorPosition()
+		}
+		if g.dragging {
+			// Move the window only by the delta of the cursor.
+			cx, cy := ebiten.CursorPosition()
+			dx := int(float64(cx-g.dragStartCursorX) * g.cursorToWindowX)
+			dy := int(float64(cy-g.dragStartCursorY) * g.cursorToWindowY)
+			wx, wy := ebiten.WindowPosition()
+			ebiten.SetWindowPosition(wx+dx, wy+dy)
+		}
+
 		return nil
 	}
 }
@@ -127,8 +153,8 @@ func (g *Game) drawText(parent *ebiten.Image, content string, fontsize float64, 
 		},
 	})
 	timg := ebiten.NewImageFromImage(tima)
-	// timg.Fill(color.Transparent)
-	timg.Fill(color.White)
+	timg.Fill(color.Transparent)
+	// timg.Fill(color.White)
 
 	opt := &text.DrawOptions{}
 	opt.GeoM.Translate(5, 5)
@@ -142,6 +168,8 @@ func (g *Game) drawText(parent *ebiten.Image, content string, fontsize float64, 
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	g.cursorToWindowX = float64(outsideWidth) / float64(screenWidth)
+	g.cursorToWindowY = float64(outsideHeight) / float64(screenHeight)
 	return screenWidth, screenHeight
 }
 
