@@ -9,6 +9,7 @@ import (
 
 	"screen-rule/assets/fonts"
 
+	"github.com/ebitengine/debugui"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/colorm"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -45,6 +46,10 @@ type Game struct {
 	cursorToWindowY float64
 
 	canvasImage *ebiten.Image
+
+	debugui   debugui.DebugUI
+	debugRect image.Rectangle
+	count     int
 }
 
 func NewGame() *Game {
@@ -62,60 +67,84 @@ func NewGame() *Game {
 func (g *Game) Update() error {
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
-	} else {
-		mx, my := ebiten.CursorPosition()
-		isMouseMoved := g.cursor.x != mx || g.cursor.y != my
-		g.cursor = pos{
-			x: mx,
-			y: my,
-		}
-		isMouseChanged := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
-			inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) ||
-			inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) ||
-			inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonRight) ||
-			inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) ||
-			inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonMiddle) ||
-			inpututil.IsMouseButtonJustPressed(ebiten.MouseButton0) ||
-			inpututil.IsMouseButtonJustReleased(ebiten.MouseButton1) ||
-			inpututil.IsMouseButtonJustPressed(ebiten.MouseButton2) ||
-			inpututil.IsMouseButtonJustReleased(ebiten.MouseButton3) ||
-			inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4)
-		if isMouseChanged || isMouseMoved {
-			g.canvasImage.Fill(color.Transparent)
-			// g.canvasImage.Fill(color.White) // for debug
-			g.drawText(g.canvasImage, "你好世界！", 50, 146, 5)
-			g.drawText(g.canvasImage, "测试", 56, 90, 80)
-
-			b := g.canvasImage.Bounds()
-			var ebitenAlphaImage *image.Alpha = image.NewAlpha(b)
-			for j := b.Min.Y; j < b.Max.Y; j++ {
-				for i := b.Min.X; i < b.Max.X; i++ {
-					ebitenAlphaImage.Set(i, j, g.canvasImage.At(i, j))
-				}
-			}
-			isIn := ebitenAlphaImage.At(mx-b.Min.X, my-b.Min.Y).(color.Alpha).A > 0
-			ebiten.SetWindowMousePassthrough(!isIn)
-		}
-
-		if !ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-			g.dragging = false
-		}
-		if !g.dragging && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-			g.dragging = true
-			g.dragStartWindowX, g.dragStartWindowY = ebiten.WindowPosition()
-			g.dragStartCursorX, g.dragStartCursorY = ebiten.CursorPosition()
-		}
-		if g.dragging {
-			// Move the window only by the delta of the cursor.
-			cx, cy := ebiten.CursorPosition()
-			dx := int(float64(cx-g.dragStartCursorX) * g.cursorToWindowX)
-			dy := int(float64(cy-g.dragStartCursorY) * g.cursorToWindowY)
-			wx, wy := ebiten.WindowPosition()
-			ebiten.SetWindowPosition(wx+dx, wy+dy)
-		}
-
-		return nil
 	}
+	mx, my := ebiten.CursorPosition()
+	isMouseMoved := g.cursor.x != mx || g.cursor.y != my
+	g.cursor = pos{
+		x: mx,
+		y: my,
+	}
+	isMouseChanged := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
+		inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) ||
+		inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonRight) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) ||
+		inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonMiddle) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton0) ||
+		inpututil.IsMouseButtonJustReleased(ebiten.MouseButton1) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton2) ||
+		inpututil.IsMouseButtonJustReleased(ebiten.MouseButton3) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4)
+	if isMouseChanged || isMouseMoved {
+		g.canvasImage.Fill(color.Transparent)
+		// g.canvasImage.Fill(color.White) // for debug
+		g.drawText(g.canvasImage, "你好世界！", 50, 146, 5)
+		g.drawText(g.canvasImage, "测试", 56, 90, 80)
+
+		b := g.canvasImage.Bounds()
+		var ebitenAlphaImage *image.Alpha = image.NewAlpha(b)
+		for j := b.Min.Y; j < b.Max.Y; j++ {
+			for i := b.Min.X; i < b.Max.X; i++ {
+				ebitenAlphaImage.Set(i, j, g.canvasImage.At(i, j))
+			}
+		}
+		isIn := ebitenAlphaImage.At(mx-b.Min.X, my-b.Min.Y).(color.Alpha).A > 0 || g.isOnDebugUI(mx, my)
+		ebiten.SetWindowMousePassthrough(!isIn)
+	}
+
+	if !ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+		g.dragging = false
+	}
+	if !g.dragging && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		g.dragging = true
+		g.dragStartWindowX, g.dragStartWindowY = ebiten.WindowPosition()
+		g.dragStartCursorX, g.dragStartCursorY = ebiten.CursorPosition()
+	}
+	if g.dragging {
+		// Move the window only by the delta of the cursor.
+		cx, cy := ebiten.CursorPosition()
+		dx := int(float64(cx-g.dragStartCursorX) * g.cursorToWindowX)
+		dy := int(float64(cy-g.dragStartCursorY) * g.cursorToWindowY)
+		wx, wy := ebiten.WindowPosition()
+		ebiten.SetWindowPosition(wx+dx, wy+dy)
+	}
+	return g.updateDebugUI()
+}
+
+func (g *Game) updateDebugUI() error {
+	if _, err := g.debugui.Update(func(ctx *debugui.Context) error {
+		if g.debugRect.Empty() {
+			g.debugRect = image.Rect(250, 100, 350, 150)
+		}
+		ctx.Window("Test", g.debugRect, func(layout debugui.ContainerLayout) {
+			ctx.Button("Button").On(func() {
+				g.count++
+			})
+		})
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (g *Game) isOnDebugUI(cx, cy int) bool {
+	if g.debugRect.Empty() {
+		return false
+	}
+	return g.debugRect.Min.X <= cx && cx < g.debugRect.Max.X &&
+		g.debugRect.Min.Y <= cy && cy < g.debugRect.Max.Y
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -128,10 +157,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	colorm.DrawImage(screen, brushImage, cm, op)
 
 	isMP := ebiten.IsWindowMousePassthrough()
-	msg := fmt.Sprintf("(%d, %d)\n(%d, %d)\nTPS: %0.2f\nMousePassthrough: %v\nHello, World!", monitorWidth, monitorHeight, g.cursor.x, g.cursor.y, ebiten.ActualTPS(), isMP)
+	msg := fmt.Sprintf(
+		"(%d, %d)\n(%d, %d)\nTPS: %0.2f\nMousePassthrough: %v\nHello, World!\nCount: %d",
+		monitorWidth, monitorHeight, g.cursor.x, g.cursor.y, ebiten.ActualTPS(), isMP, g.count)
 	ebitenutil.DebugPrintAt(screen, msg, 10, 10)
 
 	vector.StrokeRect(g.canvasImage, 2, 2, screenWidth-4, screenHeight-4, 2, color.RGBA{R: 0xff, G: 0xaa, B: 0x11, A: 0xff}, true)
+
+	g.debugui.Draw(screen)
 }
 
 func (g *Game) drawText(parent *ebiten.Image, content string, fontsize float64, posX, posY float64) {
